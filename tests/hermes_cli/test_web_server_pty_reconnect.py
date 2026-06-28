@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -165,4 +166,12 @@ def test_child_eof_closes_socket_and_bridge(pty_client, monkeypatch):
             conn.receive_bytes()
 
     assert len(bridges) == 1
+    # ``bridge.close()`` runs in the handler's ``finally`` on the server's
+    # event loop (via ``asyncio.to_thread``), on a different thread than this
+    # test. Exiting the client-side ``websocket_connect`` context does not
+    # guarantee the server has reached that teardown yet, so poll briefly
+    # rather than asserting instantly (the bare assert flaked under loaded CI).
+    deadline = time.monotonic() + 5.0
+    while not bridges[0].closed and time.monotonic() < deadline:
+        time.sleep(0.02)
     assert bridges[0].closed is True
